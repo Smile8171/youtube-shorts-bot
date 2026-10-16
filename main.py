@@ -11,9 +11,9 @@ def generate_script_and_prompts():
     Provide the output in valid JSON format with keys: title, hook, body, call_to_action, and visual_prompts.
     """
     
-    # Fix: Use application/json or text/plain for response_mime_type
+    # Updated model to gemini-3.8-flash and response_mime_type to application/json
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.8-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
