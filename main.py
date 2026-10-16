@@ -6,7 +6,8 @@ from google.genai import types
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+# Naye moviepy imports (v2 compatible)
+from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 import edge_tts
 import asyncio
 import json
@@ -61,9 +62,9 @@ def create_video(image_paths, audio_path):
     clips = []
     for path in image_paths:
         img_clip = ImageClip(path).set_duration(clip_duration)
-        img_clip = img_clip.resize(height=1920).set_fps(24)
+        img_clip = img_clip.resized(height=1920).with_fps(24) # MoviePy v2 syntax
         clips.append(img_clip)
-    video = concatenate_videoclips(clips, method="compose").set_audio(audio_clip)
+    video = concatenate_videoclips(clips, method="compose").with_audio(audio_clip)
     output_path = "final_output.mp4"
     video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
     return output_path
