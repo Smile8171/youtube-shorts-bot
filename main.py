@@ -6,56 +6,67 @@ import asyncio
 import urllib.parse
 import requests
 import edge_tts
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from google import genai
 from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
-# 1. FIXED CHARACTER DESIGN
-CHARACTER_LOCK = (
-    "3D Pixar Disney style Indian cartoon animation, featuring two exact consistent characters: "
-    "Golu (a chubby cheerful Indian boy with a thick black mustache wearing a bright red kurta and white pajama) "
-    "and Pappu (a tall thin clumsy Indian boy wearing round glasses, a yellow t-shirt, and blue jeans), "
-)
+# Short & clean character prompt taaki URL kabhi fail na ho
+CHAR_STYLE = "3D Pixar cartoon Indian comedy, chubby boy Golu in red kurta with mustache and thin boy Pappu in yellow shirt with glasses,"
 
-# 2. DAILY RANDOM TOPICS
 STORY_TOPICS = [
-    "free samosa competition in the market",
-    "funny ghost rumor in an old haveli at night",
-    "broken scooter repair desi jugaad gone wrong",
-    "chased by an angry street bull after wearing red",
-    "trying to catch a smart monkey who stole Golu's lunchbox",
-    "opening a chaotic roadside chai stall",
-    "lottery ticket confusion and funny celebration",
-    "hiding from the strict landlord on rent day",
-    "magic potion from a fake baba that causes hiccups",
-    "cricket match where the ball breaks the neighbor's window",
-    "flying a giant kite that lifts Pappu into the air",
-    "fake treasure map found in the backyard"
+    "free samosa eating competition in market",
+    "funny ghost prank in old haveli at night",
+    "flying a giant kite that lifts Pappu in the air",
+    "chased by a funny street dog after stealing laddoos",
+    "desi jugaad cooler invention explodes with water",
+    "trying to catch a naughty monkey who took Golu's samosa",
+    "cricket ball breaks strict neighbor's window",
+    "funny confusion with a lottery ticket"
 ]
 
 def generate_short_content():
     chosen_topic = random.choice(STORY_TOPICS)
     prompt = f"""
-    Create a hilarious, high-energy Indian cartoon comedy story for a YouTube Short (35-45 words) in Hindi (Devanagari script) about our two fixed best friend characters: 'गोलू' (Golu - who loves food/samosas) and 'पप्पू' (Pappu - who makes funny clumsy ideas).
-    Today's unique episode topic is: {chosen_topic}.
-    Make sure the story is completely fresh, funny, and ends with a punchline.
+    Create a fast-paced, hilarious Indian cartoon YouTube Short script (40-50 words) in Hindi (Devanagari) about Golu (गोलू) and Pappu (पप्पू).
+    Topic: {chosen_topic}.
+    Split the story into EXACTLY 6 fast scenes so the video has great editing and never feels stuck on one image.
 
     Return ONLY valid JSON in this exact format (no markdown, no extra text):
     {{
-      "title": "Funny Catchy Hindi Title with Golu & Pappu #Shorts #Cartoon",
-      "narration": "चटपटी और मजेदार हिंदी कहानी जिसमें गोलू और पप्पू का नाम हो (सिर्फ बोलने वाला टेक्स्ट, कोई इमोजी या स्टार नहीं)।",
-      "scene_actions": [
-        "standing in a colorful Indian bazaar looking excited at a samosa shop, bright morning lighting",
-        "doing a funny comical action related to the story, exaggerated cartoon expressions, dynamic angle",
-        "laughing together in a hilarious ending scene, vibrant colors, cinematic 3D lighting"
+      "title": "Funny Catchy Hindi Title #Shorts #Cartoon",
+      "scenes": [
+        {{
+          "line": "पहली मजेदार लाइन जो स्क्रीन पर दिखेगी और बोली जाएगी।",
+          "visual": "Golu and Pappu standing in colorful Indian market looking excited"
+        }},
+        {{
+          "line": "दूसरी मजेदार लाइन कहानी को आगे बढ़ाते हुए।",
+          "visual": "Pappu showing a funny crazy idea with animated hand gestures"
+        }},
+        {{
+          "line": "तीसरी लाइन में कुछ गड़बड़ या एक्शन होता है।",
+          "visual": "funny chaos action scene with shocked cartoon expressions"
+        }},
+        {{
+          "line": "चौथी लाइन में दोनों भागते हैं या अजीब हरकत करते हैं।",
+          "visual": "both running comically in panic through Indian street"
+        }},
+        {{
+          "line": "पांचवीं लाइन में मजेदार मोड़ आता है।",
+          "visual": "Golu doing something clumsy and funny, vibrant 3D lighting"
+        }},
+        {{
+          "line": "आखिर में एक धमाकेदार पंचलाइन!",
+          "visual": "both laughing hysterically in a funny ending pose"
+        }}
       ]
     }}
     """
 
-    # Aapki saari API keys aur backup models ki list
     api_keys = [
         os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
         for i in range(1, 6)
@@ -66,76 +77,96 @@ def generate_short_content():
     for model_name in models_to_try:
         for idx, key in enumerate(api_keys):
             try:
-                print(f"Trying {model_name} with API Key #{idx + 1}...")
+                print(f"Trying {model_name} with Key #{idx + 1}...")
                 client = genai.Client(api_key=key)
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt
-                )
+                response = client.models.generate_content(model=model_name, contents=prompt)
                 raw = response.text.strip()
                 if raw.startswith("```"):
                     raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
                 data = json.loads(raw)
-                print("Generated Episode:\n", json.dumps(data, ensure_ascii=False, indent=2))
                 return data
             except Exception as e:
-                print(f"Warning on {model_name} (Key #{idx + 1}): {e}. Retrying in 5s...")
-                time.sleep(5)
+                print(f"Retry ({e})...")
+                time.sleep(4)
 
-    raise RuntimeError("Saare Gemini models/keys abhi busy hain!")
+    raise RuntimeError("All Gemini keys busy!")
 
-async def make_hindi_voice(text, output_file="voiceover.mp3"):
+async def make_hindi_voice(text, output_file):
     communicate = edge_tts.Communicate(
         text=text,
         voice="hi-IN-MadhurNeural",
-        rate="+12%",
+        rate="+15%",
         pitch="+15Hz"
     )
     await communicate.save(output_file)
 
-def download_cartoon_image(scene_action, filename):
-    full_prompt = f"{CHARACTER_LOCK} {scene_action}, vibrant colors, high quality 3D render, vertical 9:16"
-    encoded = urllib.parse.quote(full_prompt)
-    fixed_seed = 424242
-    url = f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1920&seed={fixed_seed}&nologo=true"
-    
-    print(f"Generating consistent character scene: {filename}...")
-    for attempt in range(3):
+def download_real_cartoon_image(visual_prompt, filename, scene_idx):
+    # Short clean prompt so Pollinations never times out or gives blank screen
+    clean_prompt = f"{CHAR_STYLE} {visual_prompt}, vibrant 3D Pixar render, vertical"
+    encoded = urllib.parse.quote(clean_prompt)
+    models = ["flux", "turbo"]
+
+    for attempt in range(5):
+        model = models[attempt % len(models)]
+        seed = 424242 + scene_idx + (attempt * 10)
+        url = f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&seed={seed}&model={model}&nologo=true"
         try:
-            resp = requests.get(url, timeout=60)
-            if resp.status_code == 200 and len(resp.content) > 1000:
+            print(f"Downloading Scene {scene_idx + 1} (Attempt {attempt + 1}, model={model})...")
+            resp = requests.get(url, timeout=45)
+            # Ensure it's a valid image (>15KB) and not an error page
+            if resp.status_code == 200 and len(resp.content) > 15000:
                 with open(filename, "wb") as f:
                     f.write(resp.content)
+                # Resize to full HD 1080x1920
+                img = Image.open(filename).convert("RGB").resize((1080, 1920), Image.Resampling.LANCZOS)
+                img.save(filename, quality=95)
                 return filename
         except Exception as e:
-            print(f"Retry {attempt + 1} for {filename}: {e}")
-            
-    img = Image.new("RGB", (1080, 1920), color=(255, 140, 0))
-    img.save(filename)
-    return filename
+            print(f"Image retry {attempt + 1}: {e}")
+        time.sleep(3)
+
+    raise RuntimeError(f"Scene {scene_idx + 1} image download failed after 5 tries!")
+
+def make_zoom_clip(image_path, duration, zoom_in=True):
+    """Har photo mein smooth camera zoom/motion lagata hai taaki video static na lage"""
+    base_img = Image.open(image_path).convert("RGB")
+    w, h = base_img.size
+
+    def make_frame(t):
+        progress = t / max(duration, 0.1)
+        # 1.0x se 1.15x tak smooth zoom
+        scale = (1.0 + 0.15 * progress) if zoom_in else (1.15 - 0.15 * progress)
+        crop_w, crop_h = int(w / scale), int(h / scale)
+        left = (w - crop_w) // 2
+        top = (h - crop_h) // 2
+        cropped = base_img.crop((left, top, left + crop_w, top + crop_h))
+        resized = cropped.resize((w, h), Image.Resampling.BILINEAR)
+        return np.array(resized)
+
+    from moviepy import VideoClip
+    return VideoClip(make_frame, duration=duration)
 
 def create_video(data, output_filename="output.mp4"):
-    audio_path = "voiceover.mp3"
-    asyncio.run(make_hindi_voice(data["narration"], audio_path))
+    scenes = data.get("scenes", [])
+    final_clips = []
 
-    audio_clip = AudioFileClip(audio_path)
-    total_duration = audio_clip.duration
+    for i, scene in enumerate(scenes):
+        # 1. Har scene ka alag audio taaki photo aur aawaz 100% sync rahein
+        audio_file = f"voice_{i}.mp3"
+        asyncio.run(make_hindi_voice(scene["line"], audio_file))
+        audio_clip = AudioFileClip(audio_file)
+        dur = audio_clip.duration
 
-    scenes = data.get("scene_actions", [])
-    clip_duration = total_duration / len(scenes)
+        # 2. Asli cartoon photo download (No yellow fallback!)
+        img_file = download_real_cartoon_image(scene["visual"], f"scene_{i}.jpg", i)
 
-    image_clips = []
-    for i, action in enumerate(scenes):
-        img_path = download_cartoon_image(action, f"scene_{i}.jpg")
-        clip = ImageClip(img_path).with_duration(clip_duration)
-        image_clips.append(clip)
+        # 3. Alternate Zoom-In aur Zoom-Out camera animation
+        video_clip = make_zoom_clip(img_file, dur, zoom_in=(i % 2 == 0))
+        video_clip = video_clip.with_audio(audio_clip)
+        final_clips.append(video_clip)
 
-    final_video = concatenate_videoclips(image_clips, method="compose")
-    final_video = final_video.with_audio(audio_clip)
-
-    final_video.write_videofile(output_filename, fps=24, codec='libx264', audio_codec='aac')
-
-    audio_clip.close()
+    final_video = concatenate_videoclips(final_clips, method="compose")
+    final_video.write_videofile(output_filename, fps=24, codec="libx264", audio_codec="aac")
     final_video.close()
     return output_filename
 
@@ -143,10 +174,6 @@ def upload_to_youtube(video_path, title):
     client_id = os.environ.get("YOUTUBE_CLIENT_ID", "").strip()
     client_sec = os.environ.get("YOUTUBE_CLIENT_SECRET", "").strip()
     refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN", "").strip()
-
-    if not client_id or not client_sec or not refresh_token:
-        print("Error: YouTube credentials missing hain!")
-        return
 
     credentials = Credentials(
         token=None,
@@ -172,13 +199,7 @@ def upload_to_youtube(video_path, title):
     }
 
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-    print(f"Uploading '{title}' to YouTube...")
-
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=body,
-        media_body=media
-    )
+    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
     response = None
     while response is None:
