@@ -9,7 +9,6 @@ from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
 def generate_short_content():
-    # Step 1: Gemini API se title, hook aur body generate karna
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY_1"))
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -20,7 +19,6 @@ def generate_short_content():
     return text
 
 def create_video(text, output_filename="output.mp4"):
-    # Step 2: Text se Audio (TTS) generate karna
     tts = gTTS(text=text, lang='en', slow=False)
     audio_path = "voiceover.mp3"
     tts.save(audio_path)
@@ -28,30 +26,20 @@ def create_video(text, output_filename="output.mp4"):
     audio_clip = AudioFileClip(audio_path)
     duration = audio_clip.duration
 
-    # Step 3: Vertical Video (Shorts format 1080x1920) banana MoviePy se
     bg_clip = ColorClip(size=(1080, 1920), color=(20, 20, 20), duration=duration)
-    
-    # Text overlay add karna
-    txt_clip = TextClip(text, fontsize=50, color='white', size=(900, 1500), method='caption')
+    txt_clip = TextClip(text=text, fontsize=50, color='white', size=(900, 1500), method='caption')
     txt_clip = txt_clip.set_duration(duration).set_position('center')
 
-    # Video aur audio combine karna
-    video = concatenate_videoclips([bg_clip])
-    
-    # Composite video banane ke liye
     final_video = CompositeVideoClip([bg_clip, txt_clip])
     final_video = final_video.set_audio(audio_clip)
     
-    # Render karna
     final_video.write_videofile(output_filename, fps=24, codec='libx264', audio_codec='aac')
     
-    # Cleanup temporary files
     audio_clip.close()
     final_video.close()
     return output_filename
 
 def upload_to_youtube(video_path, title):
-    # Step 4: YouTube Data API ke through upload karna
     client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
     refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
 
