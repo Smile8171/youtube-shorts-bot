@@ -1,9 +1,13 @@
-import os
+# Let's completely rewrite main.py to make sure there are no issues and write it directly to the local folder.
+# We will use explicit newlines and verify everything.
+
+code_content = '''import os
 import json
 import time
 from google import genai
 from gtts import gTTS
 from moviepy import TextClip, AudioFileClip, concatenate_videoclips, ColorClip, CompositeVideoClip
+
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
@@ -15,7 +19,7 @@ def generate_short_content():
         contents="Generate a catchy Title, Hook, and Short Body (under 50 words) for a YouTube Short about amazing coding tips or tech facts. Format clearly with 'Title:', 'Hook:', and 'Body:'."
     )
     text = response.text
-    print("Generated Content:\n", text)
+    print("Generated Content:\\n", text)
     return text
 
 def create_video(text, output_filename="output.mp4"):
@@ -95,3 +99,9 @@ if __name__ == "__main__":
     content = generate_short_content()
     video_file = create_video(content)
     upload_to_youtube(video_file, "Amazing Tech Tip #Shorts")
+'''
+
+with open("main.py", "w", encoding="utf-8") as f:
+    f.write(code_content)
+
+print("File generated successfully.")
