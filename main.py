@@ -1,9 +1,8 @@
 import os
-import json
 import time
 from google import genai
 from gtts import gTTS
-from moviepy import TextClip, AudioFileClip, concatenate_videoclips, ColorClip, CompositeVideoClip
+from moviepy import TextClip, AudioFileClip, ColorClip, CompositeVideoClip
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
@@ -40,16 +39,13 @@ def create_video(text, output_filename="output.mp4"):
     return output_filename
 
 def upload_to_youtube(video_path, title):
-    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_sec = os.environ.get("YOUTUBE_CLIENT_SECRET")
     refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
 
-    if not client_secret or not refresh_token:
-        print("Error: YouTube credentials missing hain!")
+    if not client_id or not client_sec or not refresh_token:
+        print("Error: YouTube credentials (ID, Secret ya Refresh Token) missing hain!")
         return
-
-    secret_data = json.loads(client_secret)
-    client_id = secret_data.get("installed", secret_data.get("web", {})).get("client_id")
-    client_sec = secret_data.get("installed", secret_data.get("web", {})).get("client_secret")
 
     credentials = Credentials(
         token=None,
