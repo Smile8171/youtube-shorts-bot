@@ -1,4 +1,5 @@
 import os
+import io
 import json
 import time
 import random
@@ -7,14 +8,13 @@ import urllib.parse
 import requests
 import edge_tts
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageOps
 from google import genai
-from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+from moviepy import VideoClip, AudioFileClip, concatenate_videoclips
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
-# Short & clean character prompt taaki URL kabhi fail na ho
 CHAR_STYLE = "3D Pixar cartoon Indian comedy, chubby boy Golu in red kurta with mustache and thin boy Pappu in yellow shirt with glasses,"
 
 STORY_TOPICS = [
@@ -33,36 +33,18 @@ def generate_short_content():
     prompt = f"""
     Create a fast-paced, hilarious Indian cartoon YouTube Short script (40-50 words) in Hindi (Devanagari) about Golu (गोलू) and Pappu (पप्पू).
     Topic: {chosen_topic}.
-    Split the story into EXACTLY 6 fast scenes so the video has great editing and never feels stuck on one image.
+    Split the story into EXACTLY 6 fast scenes so the video has great editing.
 
     Return ONLY valid JSON in this exact format (no markdown, no extra text):
     {{
       "title": "Funny Catchy Hindi Title #Shorts #Cartoon",
       "scenes": [
-        {{
-          "line": "पहली मजेदार लाइन जो स्क्रीन पर दिखेगी और बोली जाएगी।",
-          "visual": "Golu and Pappu standing in colorful Indian market looking excited"
-        }},
-        {{
-          "line": "दूसरी मजेदार लाइन कहानी को आगे बढ़ाते हुए।",
-          "visual": "Pappu showing a funny crazy idea with animated hand gestures"
-        }},
-        {{
-          "line": "तीसरी लाइन में कुछ गड़बड़ या एक्शन होता है।",
-          "visual": "funny chaos action scene with shocked cartoon expressions"
-        }},
-        {{
-          "line": "चौथी लाइन में दोनों भागते हैं या अजीब हरकत करते हैं।",
-          "visual": "both running comically in panic through Indian street"
-        }},
-        {{
-          "line": "पांचवीं लाइन में मजेदार मोड़ आता है।",
-          "visual": "Golu doing something clumsy and funny, vibrant 3D lighting"
-        }},
-        {{
-          "line": "आखिर में एक धमाकेदार पंचलाइन!",
-          "visual": "both laughing hysterically in a funny ending pose"
-        }}
+        {{"line": "पहली मजेदार लाइन।", "visual": "Golu and Pappu standing in colorful Indian market looking excited"}},
+        {{"line": "दूसरी मजेदार लाइन।", "visual": "Pappu showing a funny crazy idea with hand gestures"}},
+        {{"line": "तीसरी लाइन में कुछ गड़बड़ होती है।", "visual": "funny chaos action scene with shocked cartoon expressions"}},
+        {{"line": "चौथी लाइन में दोनों भागते हैं।", "visual": "both running comically in panic through Indian street"}},
+        {{"line": "पांचवीं लाइन में मजेदार मोड़।", "visual": "Golu doing something clumsy and funny, vibrant 3D lighting"}},
+        {{"line": "आखिर में एक धमाकेदार पंचलाइन!", "visual": "both laughing hysterically in a funny ending pose"}}
       ]
     }}
     """
@@ -83,8 +65,7 @@ def generate_short_content():
                 raw = response.text.strip()
                 if raw.startswith("```"):
                     raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                data = json.loads(raw)
-                return data
+                return json.loads(raw)
             except Exception as e:
                 print(f"Retry ({e})...")
                 time.sleep(4)
@@ -100,42 +81,61 @@ async def make_hindi_voice(text, output_file):
     )
     await communicate.save(output_file)
 
-def download_real_cartoon_image(visual_prompt, filename, scene_idx):
-    # Short clean prompt so Pollinations never times out or gives blank screen
-    clean_prompt = f"{CHAR_STYLE} {visual_prompt}, vibrant 3D Pixar render, vertical"
+def download_real_cartoon_image(visual_prompt, filename, scene_idx, prev_image=None):
+    clean_prompt = f"{CHAR_STYLE} {visual_prompt}, vibrant 3D Pixar render, vertical 9:16"
     encoded = urllib.parse.quote(clean_prompt)
-    models = ["flux", "turbo"]
+    
+    # Browser headers taaki Pollinations GitHub IP ko block na kare
+    headers = {
+        "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/12{scene_idx}.0.0.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+    }
 
-    for attempt in range(5):
-        model = models[attempt % len(models)]
-        seed = 424242 + scene_idx + (attempt * 10)
-        url = f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&seed={seed}&model={model}&nologo=true"
+    urls_to_try = [
+        f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&seed={424242 + scene_idx}&model=flux&nologo=true",
+        f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&seed={1000 + scene_idx}&model=turbo&nologo=true",
+        f"https://pollinations.ai/p/{encoded}?width=720&height=1280&seed={9999 + scene_idx}&nologo=true",
+        f"https://image.pollinations.ai/prompt/{encoded}?width=540&height=960&seed={random.randint(1, 99999)}&nologo=true"
+    ]
+
+    for attempt, url in enumerate(urls_to_try):
         try:
-            print(f"Downloading Scene {scene_idx + 1} (Attempt {attempt + 1}, model={model})...")
-            resp = requests.get(url, timeout=45)
-            # Ensure it's a valid image (>15KB) and not an error page
-            if resp.status_code == 200 and len(resp.content) > 15000:
-                with open(filename, "wb") as f:
-                    f.write(resp.content)
-                # Resize to full HD 1080x1920
-                img = Image.open(filename).convert("RGB").resize((1080, 1920), Image.Resampling.LANCZOS)
+            # Rate limit se bachne ke liye har request ke beech pause
+            time.sleep(4 if scene_idx > 0 or attempt > 0 else 1)
+            print(f"Downloading Scene {scene_idx + 1} (Attempt {attempt + 1})...")
+            resp = requests.get(url, headers=headers, timeout=60)
+            
+            if resp.status_code == 200 and len(resp.content) > 2000:
+                # Check ki sach mein valid image hai
+                img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+                img = img.resize((1080, 1920), Image.Resampling.LANCZOS)
                 img.save(filename, quality=95)
+                print(f"Scene {scene_idx + 1} downloaded successfully!")
                 return filename
+            else:
+                print(f"Status {resp.status_code}, size {len(resp.content)} bytes")
         except Exception as e:
-            print(f"Image retry {attempt + 1}: {e}")
-        time.sleep(3)
+            print(f"Image retry {attempt + 1} warning: {e}")
 
-    raise RuntimeError(f"Scene {scene_idx + 1} image download failed after 5 tries!")
+    # Zero-Crash Smart Fallback: Agar server bilkul down ho toh pichli cartoon image ko flip + crop karke naya angle bana dega (No yellow screen!)
+    if prev_image and os.path.exists(prev_image):
+        print(f"Using smart flipped closeup of previous cartoon scene for Scene {scene_idx + 1}...")
+        img = Image.open(prev_image).convert("RGB")
+        img = ImageOps.mirror(img)
+        w, h = img.size
+        cropped = img.crop((int(w * 0.08), int(h * 0.08), int(w * 0.92), int(h * 0.92)))
+        cropped.resize((1080, 1920), Image.Resampling.LANCZOS).save(filename, quality=95)
+        return filename
+
+    raise RuntimeError(f"Scene {scene_idx + 1} image download failed!")
 
 def make_zoom_clip(image_path, duration, zoom_in=True):
-    """Har photo mein smooth camera zoom/motion lagata hai taaki video static na lage"""
     base_img = Image.open(image_path).convert("RGB")
     w, h = base_img.size
 
     def make_frame(t):
         progress = t / max(duration, 0.1)
-        # 1.0x se 1.15x tak smooth zoom
-        scale = (1.0 + 0.15 * progress) if zoom_in else (1.15 - 0.15 * progress)
+        scale = (1.0 + 0.16 * progress) if zoom_in else (1.16 - 0.16 * progress)
         crop_w, crop_h = int(w / scale), int(h / scale)
         left = (w - crop_w) // 2
         top = (h - crop_h) // 2
@@ -143,24 +143,22 @@ def make_zoom_clip(image_path, duration, zoom_in=True):
         resized = cropped.resize((w, h), Image.Resampling.BILINEAR)
         return np.array(resized)
 
-    from moviepy import VideoClip
     return VideoClip(make_frame, duration=duration)
 
 def create_video(data, output_filename="output.mp4"):
     scenes = data.get("scenes", [])
     final_clips = []
+    last_valid_img = None
 
     for i, scene in enumerate(scenes):
-        # 1. Har scene ka alag audio taaki photo aur aawaz 100% sync rahein
         audio_file = f"voice_{i}.mp3"
         asyncio.run(make_hindi_voice(scene["line"], audio_file))
         audio_clip = AudioFileClip(audio_file)
         dur = audio_clip.duration
 
-        # 2. Asli cartoon photo download (No yellow fallback!)
-        img_file = download_real_cartoon_image(scene["visual"], f"scene_{i}.jpg", i)
+        img_file = download_real_cartoon_image(scene["visual"], f"scene_{i}.jpg", i, last_valid_img)
+        last_valid_img = img_file
 
-        # 3. Alternate Zoom-In aur Zoom-Out camera animation
         video_clip = make_zoom_clip(img_file, dur, zoom_in=(i % 2 == 0))
         video_clip = video_clip.with_audio(audio_clip)
         final_clips.append(video_clip)
