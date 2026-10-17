@@ -29,7 +29,7 @@ jobs:
       - name: Install Python Libraries
         run: |
           python -m pip install --upgrade pip
-          pip install google-genai moviepy gtts google-auth-oauthlib google-api-python-client requests
+          pip install google-genai moviepy edge-tts Pillow google-auth-oauthlib google-api-python-client requests
 
       - name: Run Python Script
         env:
