@@ -11,7 +11,7 @@ from google.oauth2.credentials import Credentials
 def generate_short_content():
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY_1"))
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.8-flash",
         contents="Generate a catchy Title, Hook, and Short Body (under 50 words) for a YouTube Short about amazing coding tips or tech facts. Format clearly with 'Title:', 'Hook:', and 'Body:'."
     )
     text = response.text
@@ -33,65 +33,4 @@ def create_video(text, output_filename="output.mp4"):
     final_video = CompositeVideoClip([bg_clip, txt_clip])
     final_video = final_video.with_audio(audio_clip)
     
-    final_video.write_videofile(output_filename, fps=24, codec='libx264', audio_codec='aac')
-    
-    audio_clip.close()
-    final_video.close()
-    return output_filename
-
-def upload_to_youtube(video_path, title):
-    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
-
-    if not client_secret or not refresh_token:
-        print("Error: YouTube credentials missing hain!")
-        return
-
-    secret_data = json.loads(client_secret)
-    client_id = secret_data.get("installed", secret_data.get("web", {})).get("client_id")
-    client_sec = secret_data.get("installed", secret_data.get("web", {})).get("client_secret")
-
-    credentials = Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_sec
-    )
-
-    youtube = build("youtube", "v3", credentials=credentials)
-
-    body = {
-        "snippet": {
-            "title": title[:100],
-            "description": "Automated YouTube Short #Shorts #Coding #Tech",
-            "tags": ["Shorts", "YouTubeShorts", "Coding"],
-            "categoryId": "28"
-        },
-        "status": {
-            "privacyStatus": "public",
-            "selfDeclaredMadeForKids": False
-        }
-    }
-
-    media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-    print(f"Uploading '{title}' to YouTube...")
-    
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=body,
-        media_body=media
-    )
-
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"Upload progress: {int(status.progress() * 100)}%")
-
-    print(f"Successfully uploaded! Video ID: {response.get('id')}")
-
-if __name__ == "__main__":
-    content = generate_short_content()
-    video_file = create_video(content)
-    upload_to_youtube(video_file, "Amazing Tech Tip #Shorts")
+    final_video.write_videofile(output
