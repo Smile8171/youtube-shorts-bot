@@ -36,9 +36,9 @@ def create_video(text, output_filename="output.mp4"):
     txt_clip = txt_clip.set_duration(duration).set_position('center')
 
     # Video aur audio combine karna
-    video = concatenate_videoclips([bg_clip]) # Background clip
+    video = concatenate_videoclips([bg_clip])
+    
     # Composite video banane ke liye
-    from moviepy.editor import CompositeVideoClip
     final_video = CompositeVideoClip([bg_clip, txt_clip])
     final_video = final_video.set_audio(audio_clip)
     
