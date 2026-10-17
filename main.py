@@ -4,10 +4,9 @@ import requests
 from google import genai
 from google.genai import types
 from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 
-# Moviepy version compatibility import
 try:
     from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 except ImportError:
