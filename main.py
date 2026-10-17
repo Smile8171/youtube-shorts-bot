@@ -3,7 +3,8 @@ import json
 import time
 from google import genai
 from gtts import gTTS
-from moviepy import TextClip, AudioFileClip, concatenate_videoclips, ColorClip, CompositeVideoClipfrom googleapiclient.discovery import build
+from moviepy import TextClip, AudioFileClip, concatenate_videoclips, ColorClip, CompositeVideoClip
+from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
