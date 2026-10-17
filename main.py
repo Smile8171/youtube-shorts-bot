@@ -1,13 +1,9 @@
-# Let's completely rewrite main.py to make sure there are no issues and write it directly to the local folder.
-# We will use explicit newlines and verify everything.
-
-code_content = '''import os
+import os
 import json
 import time
 from google import genai
 from gtts import gTTS
 from moviepy import TextClip, AudioFileClip, concatenate_videoclips, ColorClip, CompositeVideoClip
-
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
