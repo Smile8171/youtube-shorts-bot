@@ -44,7 +44,7 @@ def upload_to_youtube(video_path, title):
     refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
 
     if not client_secret or not refresh_token:
-        print("Error: YouTube credentials (Client Secret ya Refresh Token) missing hain!")
+        print("Error: YouTube credentials missing hain!")
         return
 
     secret_data = json.loads(client_secret)
