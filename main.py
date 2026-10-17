@@ -1,103 +1,114 @@
 import os
-import json
-import time
+import random
+import requests
 from google import genai
-from gtts import gTTS
-from moviepy import TextClip, AudioFileClip, concatenate_videoclips, ColorClip, CompositeVideoClip
+from google.genai import types
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google.oauth2.credentials import Credentials
 
-def generate_short_content():
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY_1"))
+# Moviepy version compatibility import
+try:
+    from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+except ImportError:
+    from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+
+import edge_tts
+import asyncio
+import json
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+CLIENT_ID = os.environ.get("YOUTUBE_CLIENT_ID")
+CLIENT_SECRET = os.environ.get("YOUTUBE_CLIENT_SECRET")
+REFRESH_TOKEN = os.environ.get("YOUTUBE_REFRESH_TOKEN")
+
+def generate_script_and_prompts():
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    prompt = """
+    Ek 45-second ka rochak Hindi YouTube Short script likho.
+    Pehli line ekdam shocking ya unbelievable fact hona chahiye (Viral Hook).
+    Bhasha aisi ho jo bolne mein natural lage (Hinglish/Simple Hindi).
+    Mujhe JSON format mein response do jismein:
+    1. "title": Short ka catchy title aur hashtag (#Shorts).
+    2. "description": SEO description aur tags.
+    3. "script_text": Poora bolne wala text (bina kisi heading ke).
+    4. "visual_prompts": 4 alag-alag cinematic AI image prompts English mein.
+    """
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents="Generate a catchy Title, Hook, and Short Body (under 50 words) for a YouTube Short about amazing coding tips or tech facts. Format clearly with 'Title:', 'Hook:', and 'Body:'."
+        model='gemini-2.5-flash',
+        contents=prompt,
+        config=types.GenerateContentConfig(response_mime_type="json"),
     )
-    text = response.text
-    print("Generated Content:\\n", text)
-    return text
+    return json.loads(response.text)
 
-def create_video(text, output_filename="output.mp4"):
-    tts = gTTS(text=text, lang='en', slow=False)
+async def create_voiceover(text):
+    communicate = edge_tts.Communicate(text, "hi-IN-MadhurNeural")
     audio_path = "voiceover.mp3"
-    tts.save(audio_path)
-    
+    await communicate.save(audio_path)
+    return audio_path
+
+def download_images(prompts):
+    image_paths = []
+    for i, prompt in enumerate(prompts):
+        clean_prompt = prompt.replace(" ", "%20")
+        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1080&height=1920&nologo=true"
+        response = requests.get(url)
+        if response.status_code == 200:
+            path = f"img_{i}.jpg"
+            with open(path, "wb") as f:
+                f.write(response.content)
+            image_paths.append(path)
+    return image_paths
+
+def create_video(image_paths, audio_path):
     audio_clip = AudioFileClip(audio_path)
-    duration = audio_clip.duration
+    total_duration = audio_clip.duration
+    clip_duration = total_duration / len(image_paths)
+    clips = []
+    for path in image_paths:
+        img_clip = ImageClip(path).set_duration(clip_duration)
+        if hasattr(img_clip, 'resize'):
+            img_clip = img_clip.resize(height=1920)
+        else:
+            img_clip = img_clip.resized(height=1920)
+        img_clip = img_clip.set_fps(24)
+        clips.append(img_clip)
+    video = concatenate_videoclips(clips, method="compose").set_audio(audio_clip)
+    output_path = "final_output.mp4"
+    video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
+    return output_path
 
-    bg_clip = ColorClip(size=(1080, 1920), color=(20, 20, 20), duration=duration)
-    txt_clip = TextClip(text=text, fontsize=50, color='white', size=(900, 1500), method='caption')
-    txt_clip = txt_clip.set_duration(duration).set_position('center')
-
-    final_video = CompositeVideoClip([bg_clip, txt_clip])
-    final_video = final_video.set_audio(audio_clip)
-    
-    final_video.write_videofile(output_filename, fps=24, codec='libx264', audio_codec='aac')
-    
-    audio_clip.close()
-    final_video.close()
-    return output_filename
-
-def upload_to_youtube(video_path, title):
-    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
-    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
-
-    if not client_secret or not refresh_token:
-        print("Error: YouTube credentials missing hain!")
-        return
-
-    secret_data = json.loads(client_secret)
-    client_id = secret_data.get("installed", secret_data.get("web", {})).get("client_id")
-    client_sec = secret_data.get("installed", secret_data.get("web", {})).get("client_secret")
-
-    credentials = Credentials(
+def upload_to_youtube(video_path, title, description):
+    creds = Credentials(
         token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_sec
+        refresh_token=REFRESH_TOKEN,
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET,
+        token_uri="https://oauth2.googleapis.com/token"
     )
-
-    youtube = build("youtube", "v3", credentials=credentials)
-
+    youtube = build("youtube", "v3", credentials=creds)
     body = {
         "snippet": {
-            "title": title[:100],
-            "description": "Automated YouTube Short #Shorts #Coding #Tech",
-            "tags": ["Shorts", "YouTubeShorts", "Coding"],
-            "categoryId": "28"
+            "title": title,
+            "description": description + "\n\n#Shorts #Viral #Trending",
+            "tags": ["shorts", "hindi shorts", "viral facts", "automation"],
+            "categoryId": "24"
         },
         "status": {
             "privacyStatus": "public",
             "selfDeclaredMadeForKids": False
         }
     }
-
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-    print(f"Uploading '{title}' to YouTube...")
-    
-    request = youtube.videos().insert(
-        part="snippet,status",
-        body=body,
-        media_body=media
-    )
-
+    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
     response = None
     while response is None:
         status, response = request.next_chunk()
-        if status:
-            print(f"Upload progress: {int(status.progress() * 100)}%")
-
-    print(f"Successfully uploaded! Video ID: {response.get('id')}")
+    print("Video successfully uploaded!")
 
 if __name__ == "__main__":
-    content = generate_short_content()
-    video_file = create_video(content)
-    upload_to_youtube(video_file, "Amazing Tech Tip #Shorts")
-'''
-
-with open("main.py", "w", encoding="utf-8") as f:
-    f.write(code_content)
-
-print("File generated successfully.")
+    data = generate_script_and_prompts()
+    audio_file = asyncio.run(create_voiceover(data["script_text"]))
+    img_files = download_images(data["visual_prompts"])
+    vid_file = create_video(img_files, audio_file)
+    upload_to_youtube(vid_file, data["title"], data["description"])
