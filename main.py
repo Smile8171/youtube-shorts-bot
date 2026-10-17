@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import random
 import asyncio
 import urllib.parse
@@ -12,14 +13,14 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 
-# 1. FIXED CHARACTER DESIGN (Yeh har image mein same rahega taaki character kabhi na badle)
+# 1. FIXED CHARACTER DESIGN
 CHARACTER_LOCK = (
     "3D Pixar Disney style Indian cartoon animation, featuring two exact consistent characters: "
     "Golu (a chubby cheerful Indian boy with a thick black mustache wearing a bright red kurta and white pajama) "
     "and Pappu (a tall thin clumsy Indian boy wearing round glasses, a yellow t-shirt, and blue jeans), "
 )
 
-# 2. DAILY RANDOM TOPICS (Har video mein bilkul nayi story aane ke liye)
+# 2. DAILY RANDOM TOPICS
 STORY_TOPICS = [
     "free samosa competition in the market",
     "funny ghost rumor in an old haveli at night",
@@ -36,9 +37,7 @@ STORY_TOPICS = [
 ]
 
 def generate_short_content():
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY_1"))
     chosen_topic = random.choice(STORY_TOPICS)
-    
     prompt = f"""
     Create a hilarious, high-energy Indian cartoon comedy story for a YouTube Short (35-45 words) in Hindi (Devanagari script) about our two fixed best friend characters: 'गोलू' (Golu - who loves food/samosas) and 'पप्पू' (Pappu - who makes funny clumsy ideas).
     Today's unique episode topic is: {chosen_topic}.
@@ -55,19 +54,37 @@ def generate_short_content():
       ]
     }}
     """
-    response = client.models.generate_content(
-        model="gemini-3.8-flash",
-        contents=prompt
-    )
-    raw = response.text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    data = json.loads(raw)
-    print("Generated Episode:\n", json.dumps(data, ensure_ascii=False, indent=2))
-    return data
+
+    # Aapki saari API keys aur backup models ki list
+    api_keys = [
+        os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
+        for i in range(1, 6)
+        if os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
+    ]
+    models_to_try = ["gemini-3.8-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+
+    for model_name in models_to_try:
+        for idx, key in enumerate(api_keys):
+            try:
+                print(f"Trying {model_name} with API Key #{idx + 1}...")
+                client = genai.Client(api_key=key)
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                raw = response.text.strip()
+                if raw.startswith("```"):
+                    raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                data = json.loads(raw)
+                print("Generated Episode:\n", json.dumps(data, ensure_ascii=False, indent=2))
+                return data
+            except Exception as e:
+                print(f"Warning on {model_name} (Key #{idx + 1}): {e}. Retrying in 5s...")
+                time.sleep(5)
+
+    raise RuntimeError("Saare Gemini models/keys abhi busy hain!")
 
 async def make_hindi_voice(text, output_file="voiceover.mp3"):
-    # Energetic cartoon style Hindi human voice
     communicate = edge_tts.Communicate(
         text=text,
         voice="hi-IN-MadhurNeural",
@@ -77,10 +94,9 @@ async def make_hindi_voice(text, output_file="voiceover.mp3"):
     await communicate.save(output_file)
 
 def download_cartoon_image(scene_action, filename):
-    # Fixed character description + scene action + fixed seed for visual consistency
     full_prompt = f"{CHARACTER_LOCK} {scene_action}, vibrant colors, high quality 3D render, vertical 9:16"
     encoded = urllib.parse.quote(full_prompt)
-    fixed_seed = 424242  # Fixed seed keeps art style & character look consistent
+    fixed_seed = 424242
     url = f"https://image.pollinations.ai/prompt/{encoded}?width=1080&height=1920&seed={fixed_seed}&nologo=true"
     
     print(f"Generating consistent character scene: {filename}...")
