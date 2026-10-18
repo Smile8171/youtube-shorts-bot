@@ -28,6 +28,42 @@ STORY_TOPICS = [
     "funny confusion with a lottery ticket"
 ]
 
+FALLBACK_SCRIPTS = [
+    {
+        "title": "गोलू और समोसे का महासंग्राम! 😂 #Shorts #Cartoon",
+        "scenes": [
+            {"line": "गोलू को बाज़ार में दिखी मुफ़्त समोसे की नई दुकान!", "visual": "Golu staring hungrily at hot samosas in colorful Indian market"},
+            {"line": "पप्पू बोला, गोलू भाई सारा समोसा आज हम ही साफ़ करेंगे!", "visual": "Pappu making funny planning gestures to chubby Golu"},
+            {"line": "लेकिन जैसे ही हाथ बढ़ाया, दुकान का खूंखार कुत्ता जाग गया!", "visual": "Funny fierce street dog waking up with angry cartoon eyes"},
+            {"line": "अब गोलू आगे-आगे और कुत्ता पीछे-पीछे, बाज़ार में मच गया हड़कंप!", "visual": "Golu running comically in panic with dog chasing him"},
+            {"line": "पप्पू ने गोलू को बचाने के लिए उस पर पानी की बाल्टी फेंक दी!", "visual": "Pappu accidentally splashing bucket of water on Golu"},
+            {"line": "गोलू बोला, समोसा तो मिला नहीं, मुफ़्त में नहाना पड़ गया!", "visual": "both laughing comically wet in street with funny ending pose"}
+        ]
+    },
+    {
+        "title": "भूतिया हवेली में गोलू-पप्पू का पंगा! 👻 #Shorts #Cartoon",
+        "scenes": [
+            {"line": "पप्पू ने गोलू को पुरानी हवेली में खजाने की लालच दी!", "visual": "Golu and Pappu standing outside spooky colorful old Indian haveli"},
+            {"line": "अंदर जाते ही एक सफ़ेद चादर उड़ती हुई दिखाई दी!", "visual": "Floating white sheet ghost appearing in dark dusty haveli"},
+            {"line": "गोलू की तो डर के मारे धोती ही ढीली हो गई!", "visual": "Golu shivering in cartoon fear with funny shocked face"},
+            {"line": "पप्पू ने भूत पर झाड़ू फेंक कर मारा और चीखने लगा!", "visual": "Pappu comically throwing broom at ghost and screaming"},
+            {"line": "तभी चादर हटी, तो अंदर से निकला गोलू का पालतू बंदर!", "visual": "Funny monkey coming out from sheet holding a mango"},
+            {"line": "गोलू हँसकर बोला, भूत नहीं ये तो मेरा चंगू बंदर था!", "visual": "both laughing hysterically hugging the monkey in funny pose"}
+        ]
+    },
+    {
+        "title": "देसी जुगाड़ से उड़ा पप्पू! 🚀 #Shorts #Cartoon",
+        "scenes": [
+            {"line": "गोलू और पप्पू ने बनाया दुनिया का सबसे बड़ा देसी कूलर!", "visual": "Golu and Pappu standing with bizarre DIY giant cooler machine"},
+            {"line": "पप्पू ने जैसे ही बटन दबाया, पंखा रॉकेट की तरह घूमने लगा!", "visual": "Cooler fan spinning crazy fast with cartoon wind effects"},
+            {"line": "अचानक कूलर से ठंडी हवा की जगह पानी की बौछार छूट पड़ी!", "visual": "Huge splash of water exploding comically from cooler"},
+            {"line": "तेज़ हवा के झोंके से पप्पू सीधा छत के पंखे से लटक गया!", "visual": "Pappu blown up in the air hanging from ceiling fan"},
+            {"line": "गोलू नीचे खड़ा होकर तौलिया लेकर चिल्लाने लगा!", "visual": "Golu running underneath with towel and scared funny expression"},
+            {"line": "पप्पू चिल्लाया, गोलू भाई अगला आविष्कार छाते का करेंगे!", "visual": "both laughing hysterically dripping wet in funny ending pose"}
+        ]
+    }
+]
+
 def get_gemini_api_keys():
     keys = []
     default_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -61,23 +97,34 @@ def generate_short_content():
     """
 
     api_keys = get_gemini_api_keys()
-    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
+    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"]
 
-    for model_name in models_to_try:
-        for idx, key in enumerate(api_keys):
-            try:
-                print(f"Trying {model_name} with Key #{idx + 1}...")
-                client = genai.Client(api_key=key)
-                response = client.models.generate_content(model=model_name, contents=prompt)
-                raw = response.text.strip()
-                if raw.startswith("```"):
-                    raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                return json.loads(raw)
-            except Exception as e:
-                print(f"Retry ({e})...")
-                time.sleep(2)
+    if api_keys:
+        for model_name in models_to_try:
+            for idx, key in enumerate(api_keys):
+                try:
+                    print(f"Trying {model_name} with Key #{idx + 1}...")
+                    client = genai.Client(api_key=key)
+                    response = client.models.generate_content(model=model_name, contents=prompt)
+                    raw = response.text.strip()
+                    if "```" in raw:
+                        raw = raw.split("```")[1]
+                        if raw.startswith("json"):
+                            raw = raw[4:]
+                        raw = raw.strip()
+                    start = raw.find("{")
+                    end = raw.rfind("}")
+                    if start != -1 and end != -1:
+                        raw = raw[start:end + 1]
+                    data = json.loads(raw)
+                    if "scenes" in data and len(data["scenes"]) >= 3:
+                        return data
+                except Exception as e:
+                    print(f"Retry ({e})...")
+                    time.sleep(1)
 
-    raise RuntimeError("All Gemini keys busy!")
+    print("Gemini keys busy or unavailable. Using hilarious fallback cartoon script...")
+    return random.choice(FALLBACK_SCRIPTS)
 
 async def make_hindi_voice(text, output_file):
     communicate = edge_tts.Communicate(
@@ -221,6 +268,10 @@ def upload_to_youtube(video_path, title):
     client_id = os.environ.get("YOUTUBE_CLIENT_ID", "").strip()
     client_sec = os.environ.get("YOUTUBE_CLIENT_SECRET", "").strip()
     refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN", "").strip()
+
+    if not (client_id and client_sec and refresh_token):
+        print("YouTube credentials missing, skipping upload.")
+        return
 
     credentials = Credentials(
         token=None,
