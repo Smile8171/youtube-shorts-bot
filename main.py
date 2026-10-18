@@ -8,7 +8,7 @@ import urllib.parse
 import requests
 import edge_tts
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 from google import genai
 from moviepy import VideoClip, AudioFileClip, concatenate_videoclips
 from googleapiclient.discovery import build
@@ -27,6 +27,17 @@ STORY_TOPICS = [
     "cricket ball breaks strict neighbor's window",
     "funny confusion with a lottery ticket"
 ]
+
+def get_gemini_api_keys():
+    keys = []
+    default_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if default_key:
+        keys.append(default_key)
+    for i in range(1, 10):
+        k = os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
+        if k and k not in keys:
+            keys.append(k)
+    return keys
 
 def generate_short_content():
     chosen_topic = random.choice(STORY_TOPICS)
@@ -49,12 +60,8 @@ def generate_short_content():
     }}
     """
 
-    api_keys = [
-        os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
-        for i in range(1, 6)
-        if os.environ.get(f"GEMINI_API_KEY_{i}", "").strip()
-    ]
-    models_to_try = ["gemini-3.8-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+    api_keys = get_gemini_api_keys()
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro"]
 
     for model_name in models_to_try:
         for idx, key in enumerate(api_keys):
@@ -68,7 +75,7 @@ def generate_short_content():
                 return json.loads(raw)
             except Exception as e:
                 print(f"Retry ({e})...")
-                time.sleep(4)
+                time.sleep(2)
 
     raise RuntimeError("All Gemini keys busy!")
 
@@ -81,43 +88,82 @@ async def make_hindi_voice(text, output_file):
     )
     await communicate.save(output_file)
 
+def create_fallback_cartoon_image(filename, visual_prompt=""):
+    w, h = 1080, 1920
+    img = Image.new("RGB", (w, h), color=(255, 140, 0))
+    draw = ImageDraw.Draw(img)
+
+    for y in range(h):
+        ratio = y / h
+        r = int(255 - ratio * 80)
+        g = int(140 + ratio * 40)
+        b = int(30 + ratio * 180)
+        draw.line([(0, y), (w, y)], fill=(r, g, b))
+
+    # Bright cartoon sun / lighting glow
+    draw.ellipse([w // 2 - 280, int(h * 0.12), w // 2 + 280, int(h * 0.12) + 560], fill=(255, 235, 120))
+    draw.ellipse([w // 2 - 240, int(h * 0.12) + 40, w // 2 + 240, int(h * 0.12) + 520], fill=(255, 250, 180))
+
+    # Cartoon ground / stage
+    draw.rectangle([0, int(h * 0.72), w, h], fill=(60, 30, 90))
+    draw.rectangle([0, int(h * 0.70), w, int(h * 0.72)], fill=(255, 90, 140))
+
+    # Comic title box
+    box_top = int(h * 0.44)
+    box_bottom = int(h * 0.58)
+    draw.rectangle([80, box_top, w - 80, box_bottom], fill=(20, 20, 40))
+    draw.rectangle([90, box_top + 10, w - 90, box_bottom - 10], outline=(255, 215, 0), width=6)
+
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = None
+
+    draw.text((w // 2 - 130, int(h * 0.49)), "GOLU & PAPPU", fill=(255, 235, 50), font=font)
+    draw.text((w // 2 - 100, int(h * 0.52)), "HINDI COMEDY", fill=(255, 255, 255), font=font)
+
+    img.save(filename, quality=95)
+    return filename
+
+def try_download_image(url, filename, headers):
+    resp = requests.get(url, headers=headers, timeout=25)
+    if resp.status_code == 200 and len(resp.content) > 3000:
+        content_type = resp.headers.get("Content-Type", "")
+        if "image" in content_type or resp.content[:4] in [b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1", b"\x89PNG", b"RIFF"]:
+            img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+            img = img.resize((1080, 1920), Image.Resampling.LANCZOS)
+            img.save(filename, quality=95)
+            return True
+    return False
+
 def download_real_cartoon_image(visual_prompt, filename, scene_idx, prev_image=None):
     clean_prompt = f"{CHAR_STYLE} {visual_prompt}, vibrant 3D Pixar render, vertical 9:16"
-    encoded = urllib.parse.quote(clean_prompt)
-    
-    # Browser headers taaki Pollinations GitHub IP ko block na kare
+    encoded_full = urllib.parse.quote(clean_prompt)
+    encoded_short = urllib.parse.quote(f"3D Pixar cartoon Golu and Pappu, {visual_prompt}")
+
     headers = {
-        "User-Agent": f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/12{scene_idx}.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
     }
 
     urls_to_try = [
-        f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&seed={424242 + scene_idx}&model=flux&nologo=true",
-        f"https://image.pollinations.ai/prompt/{encoded}?width=720&height=1280&seed={1000 + scene_idx}&model=turbo&nologo=true",
-        f"https://pollinations.ai/p/{encoded}?width=720&height=1280&seed={9999 + scene_idx}&nologo=true",
-        f"https://image.pollinations.ai/prompt/{encoded}?width=540&height=960&seed={random.randint(1, 99999)}&nologo=true"
+        f"https://image.pollinations.ai/prompt/{encoded_full}?width=720&height=1280&model=turbo&seed={1000 + scene_idx}&nologo=true",
+        f"https://image.pollinations.ai/prompt/{encoded_short}?width=720&height=1280&model=turbo&seed={random.randint(1, 99999)}&nologo=true",
+        f"https://image.pollinations.ai/prompt/{encoded_full}?width=540&height=960&nologo=true&seed={42424 + scene_idx}",
+        f"https://image.pollinations.ai/prompt/{encoded_short}?width=720&height=1280&nologo=true"
     ]
 
     for attempt, url in enumerate(urls_to_try):
         try:
-            # Rate limit se bachne ke liye har request ke beech pause
-            time.sleep(4 if scene_idx > 0 or attempt > 0 else 1)
+            time.sleep(1 if attempt == 0 else 3)
             print(f"Downloading Scene {scene_idx + 1} (Attempt {attempt + 1})...")
-            resp = requests.get(url, headers=headers, timeout=60)
-            
-            if resp.status_code == 200 and len(resp.content) > 2000:
-                # Check ki sach mein valid image hai
-                img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-                img = img.resize((1080, 1920), Image.Resampling.LANCZOS)
-                img.save(filename, quality=95)
+            if try_download_image(url, filename, headers):
                 print(f"Scene {scene_idx + 1} downloaded successfully!")
                 return filename
-            else:
-                print(f"Status {resp.status_code}, size {len(resp.content)} bytes")
         except Exception as e:
             print(f"Image retry {attempt + 1} warning: {e}")
 
-    # Zero-Crash Smart Fallback: Agar server bilkul down ho toh pichli cartoon image ko flip + crop karke naya angle bana dega (No yellow screen!)
+    # Fallback 1: Re-use and transform previous cartoon scene if available
     if prev_image and os.path.exists(prev_image):
         print(f"Using smart flipped closeup of previous cartoon scene for Scene {scene_idx + 1}...")
         img = Image.open(prev_image).convert("RGB")
@@ -127,7 +173,10 @@ def download_real_cartoon_image(visual_prompt, filename, scene_idx, prev_image=N
         cropped.resize((1080, 1920), Image.Resampling.LANCZOS).save(filename, quality=95)
         return filename
 
-    raise RuntimeError(f"Scene {scene_idx + 1} image download failed!")
+    # Fallback 2: Generate guaranteed high-quality cartoon frame so pipeline never crashes
+    print(f"Using cartoon visual frame for Scene {scene_idx + 1}...")
+    create_fallback_cartoon_image(filename, visual_prompt)
+    return filename
 
 def make_zoom_clip(image_path, duration, zoom_in=True):
     base_img = Image.open(image_path).convert("RGB")
@@ -143,7 +192,7 @@ def make_zoom_clip(image_path, duration, zoom_in=True):
         resized = cropped.resize((w, h), Image.Resampling.BILINEAR)
         return np.array(resized)
 
-    return VideoClip(make_frame, duration=duration)
+    return VideoClip(make_frame).with_duration(duration)
 
 def create_video(data, output_filename="output.mp4"):
     scenes = data.get("scenes", [])
