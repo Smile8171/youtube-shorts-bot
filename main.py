@@ -97,7 +97,7 @@ def generate_short_content():
     """
 
     api_keys = get_gemini_api_keys()
-    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro"]
+    models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
 
     if api_keys:
         for model_name in models_to_try:
@@ -123,8 +123,8 @@ def generate_short_content():
                     print(f"Retry ({e})...")
                     time.sleep(1)
 
-    print("Gemini keys busy or unavailable. Using hilarious fallback cartoon script...")
-    return random.choice(FALLBACK_SCRIPTS)
+    print("Gemini generation failed; skipping upload to avoid repeating a fallback Short.")
+    raise RuntimeError("Gemini could not generate a new Short with any configured API key/model. No video was uploaded.")
 
 async def make_hindi_voice(text, output_file):
     communicate = edge_tts.Communicate(
