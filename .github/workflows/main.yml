@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -34,7 +34,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-genai moviepy edge-tts Pillow numpy google-auth-oauthlib google-api-python-client requests
 
-      - name: Run Script with AI Self-Healing
+      - name: Run Shorts script
         env:
           GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
@@ -44,20 +44,4 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-        run: |
-          echo "Running main.py (Attempt 1)..."
-          if ! python main.py 2> error.log; then
-            echo "Error detected! Launching Gemini Auto-Fixer..."
-            cat error.log
-            python auto_fixer.py
-            
-            echo "Committing AI fix back to repository..."
-            git config user.name "Gemini Auto-Fixer Bot"
-            git config user.email "actions@github.com"
-            git add main.py
-            git commit -m "AI Auto-Fix: Repaired main.py after crash" || true
-            git push || true
-            
-            echo "Re-running repaired main.py (Attempt 2)..."
-            python main.py
-          fi
+        run: python main.py
