@@ -273,39 +273,43 @@ def upload_to_youtube(video_path, title):
         print("YouTube credentials missing, skipping upload.")
         return
 
-    credentials = Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_sec
-    )
+    try:
+        credentials = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_sec
+        )
 
-    youtube = build("youtube", "v3", credentials=credentials)
+        youtube = build("youtube", "v3", credentials=credentials)
 
-    body = {
-        "snippet": {
-            "title": title[:100],
-            "description": "Golu aur Pappu ki Nayi Kahani! #Shorts #Cartoon #HindiKahani #Comedy",
-            "tags": ["Shorts", "HindiCartoon", "GoluPappu", "Animation", "FunnyShorts"],
-            "categoryId": "24"
-        },
-        "status": {
-            "privacyStatus": "public",
-            "selfDeclaredMadeForKids": False
+        body = {
+            "snippet": {
+                "title": title[:100],
+                "description": "Golu aur Pappu ki Nayi Kahani! #Shorts #Cartoon #HindiKahani #Comedy",
+                "tags": ["Shorts", "HindiCartoon", "GoluPappu", "Animation", "FunnyShorts"],
+                "categoryId": "24"
+            },
+            "status": {
+                "privacyStatus": "public",
+                "selfDeclaredMadeForKids": False
+            }
         }
-    }
 
-    media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+        media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+        request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
 
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"Upload progress: {int(status.progress() * 100)}%")
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print(f"Upload progress: {int(status.progress() * 100)}%")
 
-    print(f"Successfully uploaded! Video ID: {response.get('id')}")
+        print(f"Successfully uploaded! Video ID: {response.get('id')}")
+    except Exception as e:
+        print(f"YouTube upload skipped or failed due to authentication error: {e}")
+        print("Please verify or refresh your YOUTUBE_REFRESH_TOKEN secret.")
 
 if __name__ == "__main__":
     data = generate_short_content()
